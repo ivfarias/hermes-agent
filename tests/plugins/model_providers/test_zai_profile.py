@@ -176,3 +176,57 @@ class TestZaiFullKwargsIntegration:
         )
         assert kwargs["reasoning_effort"] == "max"
         assert kwargs["extra_body"]["thinking"] == {"type": "enabled"}
+
+
+class TestGlm53ReasoningEffort:
+    """GLM-5.3 exposes low|high|max on the wire; thinking is always on.
+    (Task 7D — orchestration-hardening Task 1: the provider gate matched
+    only GLM-5.2 names, so every GLM-5.3 effort setting was inert.)"""
+
+    def test_xhigh_maps_to_max(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "xhigh"},
+            model="glm-5.3-flash",
+        )
+        assert top_level == {"reasoning_effort": "max"}
+
+    def test_high_stays_high(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "high"},
+            model="glm-5.3-flash",
+        )
+        assert top_level == {"reasoning_effort": "high"}
+
+    def test_medium_maps_to_low(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "medium"},
+            model="glm-5.3-flash",
+        )
+        assert top_level == {"reasoning_effort": "low"}
+
+    def test_none_means_cheapest_not_off(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "none"},
+            model="glm-5.3-flash",
+        )
+        assert top_level == {"reasoning_effort": "low"}
+
+    def test_no_preference_keeps_server_default(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config=None, model="glm-5.3-flash",
+        )
+        assert "reasoning_effort" not in top_level
+
+    def test_glm_5_2_max_preserved(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "xhigh"},
+            model="glm-5.2",
+        )
+        assert top_level == {"reasoning_effort": "max"}
+
+    def test_glm_4_5_untouched(self, zai_profile):
+        extra_body, top_level = zai_profile.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "xhigh"},
+            model="glm-4.5",
+        )
+        assert "reasoning_effort" not in top_level

@@ -58,6 +58,35 @@ def _is_glm_5_2(model: str | None) -> bool:
         return False
     return any(token in m for token in ("glm-5.2", "glm-5-2", "glm-5p2"))
 
+_GLM_5_3_TOKENS = ("glm-5.3", "glm-5-3", "glm-5p3")
+
+
+def _is_glm_5_3(model: str | None) -> bool:
+    return bool(model) and any(tok in model.lower() for tok in _GLM_5_3_TOKENS)
+
+
+def _glm_5_3_reasoning_effort(reasoning_config: dict | None) -> str | None:
+    """GLM-5.3's three-level vocabulary (low/high/max). Thinking is always
+    on: the API rejects thinking-off with 1210, and omitting the field keeps
+    the server default (max - the most expensive tier), so ``none`` maps to
+    the cheapest tier instead of being dropped. Vocabulary data lives in
+    agent.reasoning_effort; xhigh/ultra round up to max."""
+    if not isinstance(reasoning_config, dict):
+        return None
+    if reasoning_config.get("enabled") is False:
+        return None
+
+    effort = (reasoning_config.get("effort") or "").strip().lower()
+    if not effort:
+        return None
+    if effort == "none":
+        return "low"
+
+    from agent.reasoning_effort import GLM53_EFFORTS, GLM53_OVERRIDES, clamp_effort
+
+    clamped = clamp_effort(effort, GLM53_EFFORTS, GLM53_OVERRIDES)
+    return clamped if clamped in GLM53_EFFORTS else "low"
+
 
 def _glm_5_2_reasoning_effort(reasoning_config: dict | None) -> str | None:
     """Map Hermes reasoning effort onto GLM-5.2's native ``high``/``max``.
@@ -95,7 +124,8 @@ class ZaiProfile(ProviderProfile):
         extra_body: dict[str, Any] = {}
         top_level: dict[str, Any] = {}
 
-        if not _model_supports_thinking(model) and not _is_glm_5_2(model):
+        if (not _model_supports_thinking(model) and not _is_glm_5_2(model)
+                and not _is_glm_5_3(model)):
             return extra_body, top_level
 
         # Only emit when the user expressed a preference; omitting the field
@@ -106,6 +136,11 @@ class ZaiProfile(ProviderProfile):
 
         if _is_glm_5_2(model):
             effort = _glm_5_2_reasoning_effort(reasoning_config)
+            if effort is not None:
+                top_level["reasoning_effort"] = effort
+
+        if _is_glm_5_3(model):
+            effort = _glm_5_3_reasoning_effort(reasoning_config)
             if effort is not None:
                 top_level["reasoning_effort"] = effort
 
