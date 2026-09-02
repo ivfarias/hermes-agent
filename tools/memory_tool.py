@@ -1095,6 +1095,16 @@ def memory_tool(
     if target not in {"memory", "user"}:
         return tool_error(f"Invalid target '{target}'. Use 'memory' or 'user'.", success=False)
 
+    # A disabled user profile must refuse writes on both shapes (single and
+    # batch) before any gate/staging work — USER.md is not maintained by the
+    # model when the config turns the store off. (#799)
+    if target == "user" and not _user_profile_writes_enabled():
+        return tool_error(
+            "User profile memory is disabled in config "
+            "(memory.user_profile_enabled: false); write refused.",
+            success=False,
+        )
+
     # --- Batch path -------------------------------------------------------
     if operations:
         if not isinstance(operations, list):
@@ -1165,6 +1175,28 @@ def builtin_memory_stores_enabled() -> bool:
         )
     except Exception:
         logger.debug("Could not read memory config for availability", exc_info=True)
+        return True
+
+
+def _user_profile_writes_enabled() -> bool:
+    """Whether writes to the 'user' store (USER.md) are permitted.
+
+    The memory tool is available when EITHER built-in store is enabled, so
+    availability alone does not gate ``target='user'``: with
+    ``memory.user_profile_enabled: false`` the dispatch must refuse user
+    writes instead of silently maintaining USER.md. Mirrors
+    ``builtin_memory_stores_enabled``'s config read and its fail-open
+    convention for an unreadable config. (#799)
+    """
+    try:
+        from hermes_cli.config import load_config_readonly
+
+        section = (load_config_readonly() or {}).get("memory")
+        if not isinstance(section, dict):
+            return True
+        return bool(section.get("user_profile_enabled", True))
+    except Exception:
+        logger.debug("Could not read memory config for user-profile gate", exc_info=True)
         return True
 
 
