@@ -1215,6 +1215,17 @@ def apply_memory_pending(payload: Dict[str, Any], store: "MemoryStore") -> Dict[
     target = payload.get("target", "memory")
     content = payload.get("content") or ""
     old_text = payload.get("old_text") or ""
+    # Replay bypasses the dispatch gate, so it must enforce it itself: a
+    # write staged while the profile was enabled must not land after the
+    # config flips user_profile_enabled to false. (#799)
+    if target == "user" and not _user_profile_writes_enabled():
+        return {
+            "success": False,
+            "error": (
+                "User profile memory is disabled in config "
+                "(memory.user_profile_enabled: false); write refused."
+            ),
+        }
     if action == "batch":
         return store.apply_batch(target, payload.get("operations") or [])
     if action == "add":
