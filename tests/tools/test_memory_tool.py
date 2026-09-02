@@ -706,3 +706,57 @@ class TestBomToleranceInMemoryFiles:
         raw, read_ok = MemoryStore._read_raw_checked(path)
         assert read_ok is False
         assert raw == ""
+
+
+# =========================================================================
+# Disabled user-profile write gate (#799): the memory tool exists when
+# EITHER built-in store is enabled, so with memory_enabled=true and
+# user_profile_enabled=false a target='user' write must be refused at
+# dispatch instead of silently maintaining USER.md.
+# =========================================================================
+
+class TestUserProfileDisabledWriteGate:
+    def _patch_config(self, monkeypatch, user_profile_enabled):
+        monkeypatch.setattr(
+            "hermes_cli.config.load_config_readonly",
+            lambda: {"memory": {"memory_enabled": True,
+                                "user_profile_enabled": user_profile_enabled}},
+        )
+
+    def test_user_writes_refused_when_user_profile_disabled(
+        self, store, monkeypatch,
+    ):
+        self._patch_config(monkeypatch, False)
+
+        single = json.loads(memory_tool(
+            action="add", target="user", content="Name: Alice", store=store))
+        assert single["success"] is False
+        assert "disabled" in single["error"].lower()
+
+        batch = json.loads(memory_tool(
+            target="user",
+            operations=[{"action": "add", "content": "Name: Alice"}],
+            store=store))
+        assert batch["success"] is False
+        assert "disabled" in batch["error"].lower()
+
+        assert store.user_entries == []
+        assert not store._path_for("user").exists()
+
+    def test_user_writes_still_land_when_user_profile_enabled(
+        self, store, monkeypatch,
+    ):
+        self._patch_config(monkeypatch, True)
+        result = json.loads(memory_tool(
+            action="add", target="user", content="Name: Alice", store=store))
+        assert result["success"] is True
+        assert "Name: Alice" in store.user_entries
+
+    def test_memory_target_unaffected_by_user_profile_disabled(
+        self, store, monkeypatch,
+    ):
+        self._patch_config(monkeypatch, False)
+        result = json.loads(memory_tool(
+            action="add", target="memory", content="env fact", store=store))
+        assert result["success"] is True
+        assert "env fact" in store.memory_entries
