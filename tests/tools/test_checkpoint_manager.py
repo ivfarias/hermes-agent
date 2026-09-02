@@ -1152,6 +1152,7 @@ class TestSessionDiff:
 
 
 class TestStoreStatusUnreadableWorkdir:
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses chmod 0o000")
     def test_unreadable_workdir_degrades_to_exists_false(self, tmp_path, monkeypatch):
         # A store entry recorded from a context that could read its workdir
         # (e.g. one running as root: /root/...) must degrade to
@@ -1181,3 +1182,23 @@ class TestStoreStatusUnreadableWorkdir:
         assert info["project_count"] == 1
         assert info["projects"][0]["workdir"] == workdir
         assert info["projects"][0]["exists"] is False
+
+
+class TestUnreadableWorkdirGitCommand:
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses chmod 0o000")
+    def test_run_git_degrades_on_unreadable_workdir(self, tmp_path):
+        # _run_git backs restore/diff/list/take; the same EACCES class the
+        # store_status fix handles must skip the git command with the usual
+        # (False, "", msg) contract, not raise PermissionError out of every
+        # checkpoint subcommand. (#799)
+        locked = tmp_path / "locked"
+        (locked / "rooted-away").mkdir(parents=True)
+        locked.chmod(0o000)
+        try:
+            ok, out, err = _run_git(
+                ["rev-parse", "HEAD"], tmp_path, str(locked / "rooted-away"))
+        finally:
+            locked.chmod(0o755)
+        assert ok is False
+        assert out == ""
+        assert "unreadable" in err
