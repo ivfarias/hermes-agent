@@ -635,6 +635,22 @@ def _touch_project(store: Path, working_dir: str) -> None:
         logger.debug("Could not update project metadata %s: %s", meta_path, exc)
 
 
+def _workdir_exists(workdir: str) -> bool:
+    """Probe a registered workdir without dying on an unreadable parent.
+
+    ``Path.exists()`` swallows the ENOENT family but lets PermissionError
+    (EACCES) propagate, and a store entry recorded by a context that could
+    read its workdir (e.g. one running as root) must degrade to
+    ``exists: False`` in status/preview output, never kill the call. (#799)
+    """
+    if not workdir:
+        return False
+    try:
+        return Path(workdir).exists()
+    except OSError:
+        return False
+
+
 def _list_projects(store: Path) -> List[Dict]:
     """Return all registered projects under the store."""
     projects_dir = store / _PROJECTS_DIRNAME
@@ -686,7 +702,7 @@ def _pre_v2_shadow_repos(base: Path) -> List[Dict]:
         out.append({
             "path": child,
             "workdir": workdir,
-            "exists": bool(workdir) and Path(workdir).exists(),
+            "exists": _workdir_exists(workdir),
             "marker_unreadable": marker_unreadable,
         })
     return out
@@ -2118,7 +2134,7 @@ def store_status(checkpoint_base: Optional[Path] = None) -> Dict:
                 out["projects"].append({
                     "hash": dir_hash,
                     "workdir": workdir,
-                    "exists": bool(workdir) and Path(workdir).exists(),
+                    "exists": _workdir_exists(workdir),
                     "created_at": meta.get("created_at"),
                     "last_touch": meta.get("last_touch"),
                     "commits": commits,
