@@ -7,6 +7,7 @@ from pathlib import Path
 from tools.memory_tool import (
     MemoryStore,
     memory_tool,
+    apply_memory_pending,
     _scan_memory_content,
 )
 
@@ -760,3 +761,28 @@ class TestUserProfileDisabledWriteGate:
             action="add", target="memory", content="env fact", store=store))
         assert result["success"] is True
         assert "env fact" in store.memory_entries
+
+    def test_apply_memory_pending_refuses_user_target_when_disabled(
+        self, store, monkeypatch,
+    ):
+        # The approve-replay path bypasses memory_tool dispatch, so it must
+        # enforce the gate itself: a write staged while the profile was
+        # enabled must not land after the config flips user_profile_enabled
+        # to false and /memory approve replays it. (#799)
+        self._patch_config(monkeypatch, False)
+        result = apply_memory_pending(
+            {"action": "add", "target": "user", "content": "Name: Alice"},
+            store)
+        assert result["success"] is False
+        assert "disabled" in result["error"].lower()
+        assert store.user_entries == []
+
+    def test_apply_memory_pending_still_lands_when_enabled(
+        self, store, monkeypatch,
+    ):
+        self._patch_config(monkeypatch, True)
+        result = apply_memory_pending(
+            {"action": "add", "target": "user", "content": "Name: Alice"},
+            store)
+        assert result["success"] is True
+        assert "Name: Alice" in store.user_entries
