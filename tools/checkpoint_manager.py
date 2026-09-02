@@ -367,11 +367,22 @@ def _run_git(
     Example: ``git diff --cached --quiet`` returns 1 when changes exist.
     """
     normalized_working_dir = _normalize_path(working_dir)
-    if not normalized_working_dir.exists():
+    try:
+        workdir_exists = normalized_working_dir.exists()
+        workdir_is_dir = normalized_working_dir.is_dir()
+    except OSError:
+        # Same EACCES class as the store_status probe: a store entry
+        # recorded by a context that could read its workdir (e.g. one
+        # running as root) must degrade to a skipped git command, not
+        # raise out of restore/diff/list/take. (#799)
+        msg = f"working directory unreadable: {normalized_working_dir}"
+        logger.error("Git command skipped: %s (%s)", " ".join(["git"] + list(args)), msg)
+        return False, "", msg
+    if not workdir_exists:
         msg = f"working directory not found: {normalized_working_dir}"
         logger.error("Git command skipped: %s (%s)", " ".join(["git"] + list(args)), msg)
         return False, "", msg
-    if not normalized_working_dir.is_dir():
+    if not workdir_is_dir:
         msg = f"working directory is not a directory: {normalized_working_dir}"
         logger.error("Git command skipped: %s (%s)", " ".join(["git"] + list(args)), msg)
         return False, "", msg
