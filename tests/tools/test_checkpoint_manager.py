@@ -20,6 +20,7 @@ from tools.checkpoint_manager import (
     _store_path,
     _ref_name,
     _project_meta_path,
+    _PROJECTS_DIRNAME,
     _touch_project,
     prune_checkpoints,
     maybe_auto_prune_checkpoints,
@@ -1413,3 +1414,36 @@ class TestSessionDiff:
         assert result["success"] is True
         assert "feature.py" in result["diff"]
         assert "+x = 1" in result["diff"]
+
+
+class TestStoreStatusUnreadableWorkdir:
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses chmod 0o000")
+    def test_unreadable_workdir_degrades_to_exists_false(self, tmp_path, monkeypatch):
+        # A store entry recorded from a context that could read its workdir
+        # (e.g. one running as root: /root/...) must degrade to
+        # ``exists: False`` in store_status, not kill ``checkpoints status``
+        # with PermissionError — pathlib only swallows the ENOENT family,
+        # EACCES propagates out of Path.exists(). (#799)
+        base = tmp_path / "checkpoints"
+        monkeypatch.setattr("tools.checkpoint_manager.CHECKPOINT_BASE", base)
+        store = _store_path(base)
+        projects = store / _PROJECTS_DIRNAME
+        projects.mkdir(parents=True)
+        (store / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        locked = tmp_path / "locked"
+        (locked / "rooted-away").mkdir(parents=True)
+        workdir = str(locked / "rooted-away")
+        meta_path = projects / f"{_project_hash(workdir)}.json"
+        meta_path.write_text(json.dumps({
+            "workdir": workdir,
+            "created_at": 1.0,
+            "last_touch": 1.0,
+        }), encoding="utf-8")
+        locked.chmod(0o000)
+        try:
+            info = store_status()
+        finally:
+            locked.chmod(0o755)
+        assert info["project_count"] == 1
+        assert info["projects"][0]["workdir"] == workdir
+        assert info["projects"][0]["exists"] is False

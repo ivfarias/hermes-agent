@@ -472,6 +472,22 @@ def _register_project(store: Path, working_dir: str) -> None:
 _touch_project = _register_project  # per-turn touch == re-register (same upsert)
 
 
+def _workdir_exists(workdir: str) -> bool:
+    """Probe a registered workdir without dying on an unreadable parent.
+
+    ``Path.exists()`` swallows the ENOENT family but lets PermissionError
+    (EACCES) propagate, and a store entry recorded by a context that could
+    read its workdir (e.g. one running as root) must degrade to
+    ``exists: False`` in status/preview output, never kill the call. (#799)
+    """
+    if not workdir:
+        return False
+    try:
+        return Path(workdir).exists()
+    except OSError:
+        return False
+
+
 def _list_projects(store: Path) -> List[Dict]:
     """All registered projects under the store (each tagged with ``_hash``)."""
     projects_dir = store / _PROJECTS_DIRNAME
@@ -497,7 +513,7 @@ def _pre_v2_shadow_repos(base: Path) -> List[Dict]:
         except (OSError, UnicodeDecodeError):
             marker_unreadable = True  # present but unreadable: no evidence the project is gone
         out.append({"path": child, "workdir": workdir, "marker_unreadable": marker_unreadable,
-                    "exists": bool(workdir) and Path(workdir).exists()})
+                    "exists": _workdir_exists(workdir)})
     return out
 
 
@@ -1247,7 +1263,7 @@ def store_status(checkpoint_base: Optional[Path] = None) -> Dict:
         if _store_has_head(store):
             out["projects"] = [{
                 "hash": meta.get("_hash") or "", "workdir": meta.get("workdir") or "",
-                "exists": bool(meta.get("workdir")) and Path(meta["workdir"]).exists(),
+                "exists": _workdir_exists(meta.get("workdir") or ""),
                 "created_at": meta.get("created_at"), "last_touch": meta.get("last_touch"),
                 "commits": _ref_commit_count(store, str(base), _ref_name(meta.get("_hash") or "")),
             } for meta in _list_projects(store)]
