@@ -243,8 +243,19 @@ def _run_git(args: List[str], store: Path, working_dir: str, timeout: int = _GIT
     error logging for expected non-zero exits (``diff --cached --quiet`` -> 1); ``ok`` stays rc == 0."""
     wd = _normalize_path(working_dir)
     cmd = ["git"] + list(args)
-    if not wd.is_dir():
-        msg = (f"working directory not found: {wd}" if not wd.exists()
+    try:
+        workdir_exists = wd.exists()
+        workdir_is_dir = wd.is_dir()
+    except OSError:
+        # Same EACCES class as the store_status probe: a store entry
+        # recorded by a context that could read its workdir (e.g. one
+        # running as root) must degrade to a skipped git command, not
+        # raise out of restore/diff/list/take. (#799)
+        msg = f"working directory unreadable: {wd}"
+        logger.error("Git command skipped: %s (%s)", " ".join(cmd), msg)
+        return False, "", msg
+    if not workdir_is_dir:
+        msg = (f"working directory not found: {wd}" if not workdir_exists
                else f"working directory is not a directory: {wd}")
         logger.error("Git command skipped: %s (%s)", " ".join(cmd), msg)
         return False, "", msg
