@@ -110,12 +110,14 @@ KIMI_K3_OVERRIDES: dict[str, str] = {"medium": "high", "xhigh": "max"}
 GLM52_EFFORTS: tuple[str, ...] = ("high", "max")
 GLM52_OVERRIDES: dict[str, str] = {"xhigh": "max"}
 
-#: GLM-5.3 OpenAI-compat endpoint: low/high/max; thinking is always on and
-#: cannot be disabled (the API rejects thinking-off with 1210), and omitting
-#: the field keeps the server default (max - the most expensive tier). So
-#: ``xhigh``/``ultra`` request the top tier and ``none`` maps to the
-#: cheapest tier rather than an off state.
-GLM53_EFFORTS: tuple[str, ...] = ("low", "high", "max")
+#: GLM-5.3 OpenAI-compat endpoint: low/medium/high/max; thinking is always
+#: on and cannot be disabled (the API rejects thinking-off with 1210), and
+#: omitting the field keeps the server default (max - the most expensive
+#: tier). So ``xhigh``/``ultra`` request the top tier and ``none`` maps to
+#: the cheapest tier rather than an off state. ``medium`` is accepted on the
+#: coding route (api.z.ai/api/coding/paas/v4) and rejected with 1210 on the
+#: plain api/paas/v4 route.
+GLM53_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "max")
 GLM53_OVERRIDES: dict[str, str] = {"xhigh": "max", "ultra": "max"}
 
 #: DeepSeek V4 OpenAI-compat endpoint: low/medium/high/max; ``xhigh``
