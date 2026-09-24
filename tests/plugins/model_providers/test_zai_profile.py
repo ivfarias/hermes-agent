@@ -197,12 +197,12 @@ class TestGlm53ReasoningEffort:
         )
         assert top_level == {"reasoning_effort": "high"}
 
-    def test_medium_maps_to_low(self, zai_profile):
+    def test_medium_reaches_wire(self, zai_profile):
         extra_body, top_level = zai_profile.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": "medium"},
             model="glm-5.3-flash",
         )
-        assert top_level == {"reasoning_effort": "low"}
+        assert top_level == {"reasoning_effort": "medium"}
 
     def test_none_means_cheapest_not_off(self, zai_profile):
         extra_body, top_level = zai_profile.build_api_kwargs_extras(
